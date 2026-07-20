@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "npx netlify dev",
-    "deploy": "npx netlify deploy --prod"
+    "deploy": "npx netlify deploy --prod",
+    "check:js": "node --check public/js/core.js && node --check public/js/battle.js && node --check public/js/online.js && node --check public/js/main.js",
+    "check:types": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm run check:js && npm run check:types && npm test"
   },
   "engines": {
     "node": ">=20"
@@ -13,5 +17,8 @@
   "dependencies": {
     "@netlify/blobs": "10.7.9",
     "@netlify/functions": "5.3.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
   }
 }
