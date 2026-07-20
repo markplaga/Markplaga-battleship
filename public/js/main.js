@@ -14,73 +14,158 @@ function sound(type) {
     gain.gain.exponentialRampToValueAtTime(type === "hit" || type === "sunk" ? .22 : .1, now + .015);
     gain.gain.exponentialRampToValueAtTime(.0001, now + (type === "sunk" || type === "victory" ? .7 : .25));
     osc.connect(gain).connect(audioContext.destination);
-    osc.start(now); osc.stop(now + .75);
+    osc.start(now);
+    osc.stop(now + .75);
   } catch {}
 }
 
+function goHome() {
+  clearPolling();
+  clearOnlineSession();
+  resetGame(null);
+  state.screen = "home";
+  history.replaceState({}, "", location.pathname);
+  render();
+}
+
+async function copyRoomInvitation() {
+  const link = `${location.origin}${location.pathname}?room=${state.online.code}`;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(link);
+    } else {
+      const field = document.createElement("textarea");
+      field.value = link;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.append(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("Copy failed");
+    }
+    showToast("Invitation link copied.");
+  } catch {
+    showToast(`Room code: ${state.online.code}`);
+  }
+}
+
 app.addEventListener("click", (event) => {
-  const button = event.target.closest("button");
+  const target = event.target instanceof Element ? event.target : null;
+  const button = target?.closest("button");
   if (!button) return;
   const action = button.dataset.action;
+
   if (action === "solo") {
-    resetGame("solo"); state.screen = "game"; render();
+    resetGame("solo");
+    state.screen = "game";
+    render();
   } else if (action === "online") {
-    resetGame("online"); state.screen = "onlineLobby"; render();
+    clearOnlineSession();
+    resetGame("online");
+    state.screen = "onlineLobby";
+    render();
   } else if (action === "home") {
-    clearPolling(); resetGame(null); state.screen = "home"; history.replaceState({}, "", location.pathname); render();
-  } else if (action === "create-room") createRoom();
-  else if (action === "join-room") joinRoom();
-  else if (action === "select-ship") {
-    const i = Number(button.dataset.ship);
-    if (state.playerFleet[i].cells.length) state.playerFleet[i].cells = [];
-    state.selectedShip = i; render();
+    goHome();
+  } else if (action === "create-room") {
+    createRoom();
+  } else if (action === "join-room") {
+    joinRoom();
+  } else if (action === "select-ship") {
+    const index = Number(button.dataset.ship);
+    if (state.playerFleet[index].cells.length) state.playerFleet[index].cells = [];
+    state.selectedShip = index;
+    render();
   } else if (action === "rotate") {
-    state.orientation = state.orientation === "h" ? "v" : "h"; sound("place"); render();
+    state.orientation = state.orientation === "h" ? "v" : "h";
+    sound("place");
+    render();
   } else if (action === "randomize") {
-    state.playerFleet = freshFleet(); randomizeFleet(); state.selectedShip = 0; sound("place"); render();
+    state.playerFleet = freshFleet();
+    randomizeFleet();
+    state.selectedShip = 0;
+    sound("place");
+    render();
   } else if (action === "ready") {
     state.mode === "online" ? lockOnlineFleet() : startSoloBattle();
   } else if (action === "copy-room") {
-    const link = `${location.origin}${location.pathname}?room=${state.online.code}`;
-    navigator.clipboard?.writeText(link).then(() => showToast("Invitation link copied.")).catch(() => showToast(`Room code: ${state.online.code}`));
+    copyRoomInvitation();
   } else if (action === "play-again") {
-    if (state.mode === "solo") { resetGame("solo"); state.screen = "game"; render(); }
-    else { clearPolling(); resetGame("online"); state.screen = "onlineLobby"; render(); }
+    if (state.mode === "solo") {
+      resetGame("solo");
+      state.screen = "game";
+      render();
+    } else {
+      clearPolling();
+      clearOnlineSession();
+      resetGame("online");
+      state.screen = "onlineLobby";
+      history.replaceState({}, "", location.pathname);
+      render();
+    }
   }
 
-  const cellButton = button.matches("[data-cell]") ? button : null;
-  if (cellButton) {
-    const cell = Number(cellButton.dataset.cell);
-    const board = cellButton.dataset.board;
+  if (button.matches("[data-cell]")) {
+    const cell = Number(button.dataset.cell);
+    const board = button.dataset.board;
     if (state.phase === "placement" && board === "own") placeSelected(cell);
     else if (state.phase === "battle" && board === "enemy") state.mode === "online" ? onlineFire(cell) : playerFire(cell);
   }
 });
 
 app.addEventListener("pointerover", (event) => {
-  const cellButton = event.target.closest('[data-board="own"][data-cell]');
+  const target = event.target instanceof Element ? event.target : null;
+  const cellButton = target?.closest('[data-board="own"][data-cell]');
   if (!cellButton || state.phase !== "placement") return;
   const ship = state.playerFleet[state.selectedShip];
+  if (!ship) return;
   const cells = cellsForPlacement(Number(cellButton.dataset.cell), ship.length, state.orientation);
   const valid = canPlace(state.selectedShip, cells);
-  document.querySelectorAll('[data-board="own"][data-cell]').forEach((el) => el.classList.remove("preview-valid", "preview-invalid"));
+  document.querySelectorAll('[data-board="own"][data-cell]').forEach((element) => element.classList.remove("preview-valid", "preview-invalid"));
   cells.forEach((cell) => document.querySelector(`[data-board="own"][data-cell="${cell}"]`)?.classList.add(valid ? "preview-valid" : "preview-invalid"));
 });
 
 app.addEventListener("pointerleave", () => {
-  document.querySelectorAll(".preview-valid,.preview-invalid").forEach((el) => el.classList.remove("preview-valid", "preview-invalid"));
+  document.querySelectorAll(".preview-valid,.preview-invalid").forEach((element) => element.classList.remove("preview-valid", "preview-invalid"));
 }, true);
 
 document.addEventListener("click", (event) => {
-  const action = event.target.closest("button")?.dataset.action;
-  if (action === "sound") {
+  const target = event.target instanceof Element ? event.target : null;
+  const button = target?.closest("button");
+  const action = button?.dataset.action;
+  if (!button) return;
+
+  if (action === "home" && !app.contains(button)) {
+    goHome();
+  } else if (action === "sound") {
     state.sound = !state.sound;
-    event.target.closest("button").textContent = state.sound ? "🔊" : "🔇";
+    button.textContent = state.sound ? "🔊" : "🔇";
+    button.setAttribute("aria-pressed", String(!state.sound));
     if (state.sound) sound("place");
-  } else if (action === "help") helpDialog.showModal();
-  else if (action === "close-help") helpDialog.close();
+  } else if (action === "help") {
+    if (typeof helpDialog.showModal === "function") helpDialog.showModal();
+    else helpDialog.setAttribute("open", "");
+  } else if (action === "close-help") {
+    if (typeof helpDialog.close === "function") helpDialog.close();
+    else helpDialog.removeAttribute("open");
+  }
 });
 
 window.addEventListener("beforeunload", clearPolling);
 
-render();
+async function boot() {
+  if (await resumeOnlineSession()) {
+    render();
+    return;
+  }
+
+  const roomFromUrl = (new URLSearchParams(location.search).get("room") || "").toUpperCase();
+  if (roomFromUrl) {
+    resetGame("online");
+    state.screen = "onlineLobby";
+  }
+  render();
+}
+
+boot();
