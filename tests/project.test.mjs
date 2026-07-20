@@ -3,10 +3,12 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
+import ts from "typescript";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const battleSource = readFileSync(path.join(root, "public/js/battle.js"), "utf8");
+const roomSource = readFileSync(path.join(root, "netlify/functions/room.ts"), "utf8");
 const shipDefinitions = [
   { name: "Carrier", length: 5 },
   { name: "Battleship", length: 4 },
@@ -53,6 +55,45 @@ function battleContext() {
   vm.createContext(context);
   vm.runInContext(battleSource, context, { filename: "public/js/battle.js" });
   return context;
+}
+
+function loadRoomModule() {
+  const compiled = ts.transpileModule(roomSource, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: "netlify/functions/room.ts",
+  }).outputText;
+  const module = { exports: {} };
+  const context = {
+    module,
+    exports: module.exports,
+    require(name) {
+      if (name === "@netlify/blobs") {
+        return { getStore() {}, getDeployStore() {} };
+      }
+      if (name === "@netlify/functions") return {};
+      throw new Error(`Unexpected module: ${name}`);
+    },
+    console,
+    crypto,
+    Request,
+    Response,
+    URL,
+    Uint8Array,
+    Set,
+    Date,
+    Number,
+    String,
+    Boolean,
+    Array,
+    Object,
+    JSON,
+    Math,
+  };
+  vm.runInNewContext(compiled, context, { filename: "netlify/functions/room.js" });
+  return module.exports;
 }
 
 function run(context, expression) {
@@ -121,4 +162,19 @@ test("allSunk changes only after every ship cell has been fired upon", () => {
   ];
   assert.equal(run(context, "allSunk(state.playerFleet, [0, 1, 10])"), false);
   assert.equal(run(context, "allSunk(state.playerFleet, [0, 1, 10, 20])"), true);
+});
+
+test("server accepts only a straight, non-overlapping standard fleet", () => {
+  const { validateFleet } = loadRoomModule();
+  const validFleet = [
+    [0, 1, 2, 3, 4],
+    [10, 11, 12, 13],
+    [20, 21, 22],
+    [30, 40, 50],
+    [60, 61],
+  ];
+  assert.equal(validateFleet(validFleet)?.length, 5);
+  assert.equal(validateFleet([[8, 9, 10], [20, 21, 22, 23, 24], [30, 31, 32, 33], [40, 41, 42], [50, 51]]), null);
+  assert.equal(validateFleet([[0, 1, 2, 3, 4], [4, 14, 24, 34], [20, 21, 22], [30, 40, 50], [60, 61]]), null);
+  assert.equal(validateFleet([[0, 1, 2, 3], [10, 11, 12, 13], [20, 21, 22], [30, 40, 50], [60, 61]]), null);
 });
