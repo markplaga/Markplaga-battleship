@@ -3,9 +3,6 @@ name: Deploy Battleship to GitHub Pages
 on:
   push:
     branches: [main]
-    paths:
-      - "public/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -26,6 +23,17 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Validate game and server
+        run: npm run check
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
