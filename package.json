@@ -1,0 +1,17 @@
+{
+  "name": "battleship-deep-command",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx netlify dev",
+    "deploy": "npx netlify deploy --prod"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@netlify/blobs": "10.7.9",
+    "@netlify/functions": "5.3.0"
+  }
+}
