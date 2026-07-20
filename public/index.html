@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#06111c" />
+  <meta name="description" content="A cinematic 3D Battleship game for solo play or private online matches." />
+  <title>Battleship: Deep Command</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="ocean-bg" aria-hidden="true"><div class="caustics"></div><div class="particles"></div></div>
+  <header class="topbar">
+    <button class="brand" data-action="home" aria-label="Return to main menu">
+      <span class="brand-mark">⚓</span>
+      <span><strong>BATTLESHIP</strong><small>DEEP COMMAND</small></span>
+    </button>
+    <div class="top-actions">
+      <button class="icon-btn" data-action="sound" aria-label="Toggle sound">🔊</button>
+      <button class="icon-btn" data-action="help" aria-label="How to play">?</button>
+    </div>
+  </header>
+
+  <main id="app" class="app" aria-live="polite"></main>
+  <div id="toast" class="toast" role="status"></div>
+
+  <dialog id="helpDialog" class="modal">
+    <button class="modal-close" data-action="close-help" aria-label="Close">×</button>
+    <h2>How to command the fleet</h2>
+    <p>Place all five ships on your ocean grid. Rotate a selected ship, then click a starting square to deploy it. Random deployment is available too.</p>
+    <p>During battle, select an enemy coordinate to fire. Red markers are hits; white markers are misses. Sink every enemy ship to win.</p>
+    <p>Online matches use a private six-character room code. Both commanders must finish deployment before the battle begins.</p>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
