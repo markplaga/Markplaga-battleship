@@ -78,7 +78,7 @@ const makeToken = () => crypto.randomUUID().replaceAll("-", "");
 const roomKey = (code: string) => `room/${code}`;
 const validCell = (value: unknown): value is number => Number.isInteger(value) && Number(value) >= 0 && Number(value) < 100;
 
-function validateFleet(raw: unknown): Ship[] | null {
+export function validateFleet(raw: unknown): Ship[] | null {
   if (!Array.isArray(raw) || raw.length !== FLEET.length) return null;
   const occupied = new Set<number>();
   const ships: Ship[] = [];
