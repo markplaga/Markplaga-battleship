@@ -6,6 +6,14 @@
   <meta name="theme-color" content="#06111c" />
   <meta name="description" content="A cinematic 3D Battleship game for solo play or private online matches." />
   <title>Battleship: Deep Command</title>
+  <meta name="application-name" content="Battleship">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Battleship">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -37,5 +45,6 @@
   <script src="./js/online.js"></script>
   <script src="./js/main.js"></script>
   <script src="./js/audio.js"></script>
+<script>if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }</script>
 </body>
 </html>
