@@ -3,11 +3,13 @@
    installed. Online matches go through the Netlify API and are never
    intercepted, so multiplayer keeps working.
    Bump VERSION whenever you change game files so installed copies refresh. */
-const VERSION='battleship-v1';
+const VERSION='battleship-v2';
 const CORE = [
   './', 'index.html', 'styles.css',
   'js/core.js', 'js/battle.js', 'js/online.js', 'js/main.js', 'js/audio.js',
-  'manifest.webmanifest', 'icons/icon.svg'
+  'manifest.webmanifest', 'icons/icon.svg',
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
+  'icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', e => {
