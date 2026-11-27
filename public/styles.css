@@ -148,3 +148,12 @@ h1 span { display:block; color:transparent; -webkit-text-stroke:1px rgba(127,222
   h1 { font-size:clamp(48px,19vw,78px); }
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; } }
+
+/* PWA-UPDATE-SYSTEM v2 */
+/* The hidden attribute needs this rule: .update-bar and .appfoot set
+   display, which would otherwise override the browser's built-in
+   [hidden] handling and show the banner before an update is ready. */
+[hidden] { display:none !important; }
+.update-bar { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; justify-content:space-between; width:min(1360px, calc(100% - 28px)); margin:18px auto 0; padding:14px 18px; border:1px solid var(--line); border-left:3px solid var(--gold); border-radius:16px; background:var(--panel); backdrop-filter:blur(18px); box-shadow:0 25px 70px rgba(0,0,0,.32); }
+.update-bar .update-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.appfoot { width:min(1420px,100%); margin:0 auto; padding:0 clamp(14px,3vw,42px) calc(24px + env(safe-area-inset-bottom, 0px)); display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; font-size:13px; color:var(--muted); }
