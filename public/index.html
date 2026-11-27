@@ -29,7 +29,21 @@
     </div>
   </header>
 
+  <!-- PWA-UPDATE-SYSTEM v2 -->
+  <div class="update-bar" id="updateBar" role="status" aria-live="polite" hidden>
+    <span id="updateText">A new version of Battleship is ready. Online matches are kept across the update.</span>
+    <span class="update-actions"><button class="btn btn-primary" id="updateNow">Update now</button><button class="btn btn-secondary" id="updateLater">Later</button></span>
+  </div>
+
   <main id="app" class="app" aria-live="polite"></main>
+
+  <!-- PWA-UPDATE-SYSTEM v2 -->
+  <footer class="appfoot">
+    <span>Battleship <b>v<span id="appVersion"></span></b></span>
+    <span id="updateStatus"></span>
+    <button class="btn btn-secondary" id="checkUpdates" hidden>Check for updates</button>
+  </footer>
+
   <div id="toast" class="toast" role="status"></div>
 
   <dialog id="helpDialog" class="modal">
@@ -45,6 +59,253 @@
   <script src="./js/online.js"></script>
   <script src="./js/main.js"></script>
   <script src="./js/audio.js"></script>
-<script>if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }</script>
+<script>
+// PWA-UPDATE-SYSTEM v2: auto-update, version banner, Check for updates. Do not remove this line.
+const APP_RELEASE='1.0.0-20261126-1';
+const APP_VERSION='1.0.0';
+(function(){
+  var LATER_KEY = 'battleship-update-later-v2';
+  var BC_NAME = 'battleship-update-v2';
+
+  document.getElementById('appVersion').textContent = APP_VERSION;
+  var status = document.getElementById('updateStatus'), checkBtn = document.getElementById('checkUpdates'), bar = document.getElementById('updateBar');
+  var say = function(t){ status.textContent = t; };
+  if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+  checkBtn.hidden = false;
+
+  var reg = null, userAsked = false, reloading = false, updating = false;
+  var remote = null, pendingRelease = null, checkPromise = null;
+  var tabId = 'tab-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+  // Unsaved work: a solo game lives only in memory — any placed
+  // ship or any shot fired is lost on reload — and an online fleet
+  // that has not been locked yet exists only in memory too. Once a
+  // fleet is locked, the match lives on the server and the session
+  // (room code + token) is in sessionStorage, so a reload resumes
+  // it; those tabs are safe to update. A finished game has nothing
+  // left to lose. There is no save feature to persist a solo game
+  // into, so a dirty tab blocks the update instead of being saved.
+  function isDirty(){
+    try {
+      if (typeof state === 'undefined' || !state) return true;
+      if (state.screen !== 'game') return false;
+      if (state.phase === 'finished') return false;
+      var placed = state.playerFleet.some(function(s){ return s.cells.length; });
+      if (state.mode === 'online') return state.phase === 'placement' && placed;
+      if (state.phase === 'battle') return true;
+      return placed;
+    } catch (e) { return true; }
+  }
+
+  // Multi-tab coordination over BroadcastChannel.
+  var bc = null, bcWaiters = {};
+  try { if ('BroadcastChannel' in window) bc = new BroadcastChannel(BC_NAME); } catch (e) {}
+  if (bc) bc.onmessage = function(ev){
+    var d = ev.data || {};
+    if (d.type === 'update-query' && d.from !== tabId) {
+      try { bc.postMessage({ type: 'update-response', id: d.id, from: tabId, blocked: isDirty() }); } catch (e) {}
+    } else if (d.type === 'update-response' && bcWaiters[d.id]) {
+      bcWaiters[d.id].push(d);
+    }
+  };
+  function queryTabs(release){
+    return new Promise(function(resolve){
+      if (!bc) return resolve([]);
+      var id = 'q-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      var answers = [];
+      bcWaiters[id] = answers;
+      try { bc.postMessage({ type: 'update-query', id: id, from: tabId, release: release }); } catch (e) {}
+      setTimeout(function(){ delete bcWaiters[id]; resolve(answers); }, 800);
+    });
+  }
+
+  function workerVersion(worker, ms){
+    return new Promise(function(resolve){
+      if (!worker || !('MessageChannel' in window)) return resolve(null);
+      var done = false, timer = null;
+      try {
+        var ch = new MessageChannel();
+        timer = setTimeout(function(){ if (!done) { done = true; resolve(null); } }, ms);
+        ch.port1.onmessage = function(ev){
+          if (done) return; done = true; clearTimeout(timer);
+          var d = ev.data || {};
+          resolve((d.release && d.displayVersion) ? d : null);
+        };
+        worker.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+      } catch (e) { if (timer) clearTimeout(timer); resolve(null); }
+    });
+  }
+  function workerClientCount(worker){
+    return new Promise(function(resolve){
+      if (!worker || !('MessageChannel' in window)) return resolve(null);
+      var done = false, timer = null;
+      try {
+        var ch = new MessageChannel();
+        timer = setTimeout(function(){ if (!done) { done = true; resolve(null); } }, 2000);
+        ch.port1.onmessage = function(ev){
+          if (done) return; done = true; clearTimeout(timer);
+          var d = ev.data || {};
+          resolve(typeof d.count === 'number' ? d.count : null);
+        };
+        worker.postMessage({ type: 'GET_CLIENTS' }, [ch.port2]);
+      } catch (e) { if (timer) clearTimeout(timer); resolve(null); }
+    });
+  }
+  function waitControllerChange(ms){
+    return new Promise(function(resolve){
+      var done = false;
+      var timer = setTimeout(function(){ if (!done) { done = true; resolve(false); } }, ms);
+      var onChange = function(){
+        if (done) return; done = true; clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+        resolve(true);
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', onChange);
+    });
+  }
+
+  function showBar(display, release, manual){
+    if (release) pendingRelease = release;
+    var later = null;
+    try { later = sessionStorage.getItem(LATER_KEY); } catch (e) {}
+    document.getElementById('updateText').textContent = 'Battleship ' + (display ? 'v' + display + ' ' : '') + 'is ready. Online matches are kept across the update.';
+    if (later && release && later === release && !manual) return;
+    bar.hidden = false;
+    say('An update is ready.');
+  }
+  function fetchRemote(){
+    return fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function(r){ if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function(info){ remote = (info && typeof info.release === 'string') ? info : null; return remote; })
+      .catch(function(){ remote = null; return null; });
+  }
+  function maybeShowUpdate(manual){
+    return fetchRemote().then(function(info){
+      if (reg) return reg.update().catch(function(){}).then(function(){ return info; });
+      return info;
+    }).then(function(info){
+      var w = reg && reg.waiting;
+      if (!w || !navigator.serviceWorker.controller) {
+        if (manual) {
+          if (!info) say('Could not reach the server. Try again when you are online.');
+          else if (info.release && info.release !== APP_RELEASE) say('Version ' + info.version + ' found. Downloading\u2026');
+          else say('You have the latest version (' + APP_VERSION + ').');
+        }
+        return false;
+      }
+      return workerVersion(w, 2000).then(function(verified){
+        if (verified) {
+          if (info && info.release && verified.release !== info.release) {
+            if (manual) say('The downloaded update did not match the published release. Try again.');
+            return false;
+          }
+          showBar(verified.displayVersion, verified.release, manual);
+          if (manual) say('An update is ready.');
+          return true;
+        }
+        // Handshake failed: show the banner, but name no version.
+        showBar(null, info && info.release, manual);
+        if (manual) say('An update is ready.');
+        return true;
+      });
+    });
+  }
+  function check(manual){
+    if (checkPromise) return checkPromise;
+    if (manual) { say('Checking\u2026'); checkBtn.disabled = true; }
+    checkPromise = maybeShowUpdate(manual).catch(function(){ return false; }).then(function(ok){
+      checkPromise = null;
+      if (manual) checkBtn.disabled = false;
+      return ok;
+    });
+    return checkPromise;
+  }
+  function track(w){
+    if (!w) return;
+    w.addEventListener('statechange', function(){
+      if (w.state === 'installed') check(false);
+    });
+  }
+
+  async function applyUpdate(){
+    if (updating) return;
+    updating = true;
+    try {
+      var w = reg && reg.waiting;
+      if (!w) { say('No update is waiting. Tap Check for updates first.'); return; }
+      var expected = pendingRelease || (remote && remote.release);
+      // 1. Protect this tab's unsaved work before anything moves.
+      // A solo game (and an unlocked online fleet) cannot be saved,
+      // so a dirty tab defers instead of losing the game.
+      if (isDirty()) {
+        say('Your current game would be lost \u2014 finish it or return to the Main menu first, then tap Update now.');
+        return;
+      }
+      // 2. Coordinate with other tabs of this app.
+      say('Checking other tabs\u2026');
+      var answers = await queryTabs(expected);
+      if (answers.some(function(a){ return a.blocked; })) {
+        say('Another Battleship tab has a game in progress \u2014 finish it or leave it there first, or close that tab.');
+        return;
+      }
+      if (answers.length === 0) {
+        var count = await workerClientCount(w);
+        if (count === null || count > 1) {
+          say('Another Battleship tab is open and couldn\u2019t confirm it\u2019s safe.');
+          return;
+        }
+      }
+      // 3. Activate only the specific waiting worker.
+      say('Updating\u2026');
+      userAsked = true;
+      var changed = waitControllerChange(8000);
+      w.postMessage({ type: 'SKIP_WAITING' });
+      var ok = await changed;
+      if (!ok) {
+        userAsked = false;
+        say('The update did not start. Tap Update now to try again, or Later to defer it.');
+        return;
+      }
+      // 4. Verify the new controller really is the expected release,
+      // then reload exactly once. No blind reload fallback exists.
+      var info = await workerVersion(navigator.serviceWorker.controller, 2000);
+      if (!info || (expected && info.release !== expected)) {
+        userAsked = false;
+        say('The update did not take over as expected. Tap Update now to try again, or Later to defer it.');
+        return;
+      }
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    } finally { updating = false; }
+  }
+
+  document.getElementById('updateNow').onclick = applyUpdate;
+  document.getElementById('updateLater').onclick = function(){
+    bar.hidden = true;
+    try { sessionStorage.setItem(LATER_KEY, pendingRelease || (remote && remote.release) || '?'); } catch (e) {}
+    say('Update postponed. You will be asked again next time you open the app, or tap Check for updates.');
+  };
+  checkBtn.onclick = function(){ check(true); };
+  // A controllerchange on its own (first install, or an update
+  // activated from another tab) never reloads this page: only an
+  // explicit Update now in this tab does, after verification in
+  // applyUpdate. There is deliberately no reload here.
+  window.addEventListener('load', async function(){
+    try { reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none', scope: './' }); } catch (e) { return; }
+    if (reg.waiting) check(false);
+    track(reg.installing);
+    reg.addEventListener('updatefound', function(){ track(reg.installing); });
+    check(false);
+  });
+  var last = Date.now();
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible' && Date.now() - last > 5 * 60e3) { last = Date.now(); check(false); }
+  });
+  setInterval(function(){
+    if (document.visibilityState === 'visible') { last = Date.now(); check(false); }
+  }, 60 * 60e3);
+})();
+</script>
 </body>
 </html>
